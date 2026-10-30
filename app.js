@@ -1,5 +1,6 @@
 // Dream Football — mobile PWA pulled from the estate
 // Host a room, run an auction draft, manage roster. Installable on Android.
+// v0.1.1: cap enforced, honest room copy (local draft), install icon.
 
 const PLAYERS = [
   { name:"Jordan Love", pos:"QB", value:42 },
@@ -34,39 +35,47 @@ function render() {
   if (tab === "room") {
     app.innerHTML = `
       <div class="card">
-        <p class="muted">Host or join an 8-club auction room</p>
+        <p class="muted">Host or join with a 4-letter code. Drafts run on this device — live multi-club sync is a later track.</p>
         <input id="code" placeholder="4-letter code" maxlength="4" value="${room||''}">
         <button class="primary" id="host">Host new room</button>
         <button class="primary" id="join" style="margin-top:8px;background:#1e2d4a;color:var(--ink)">Join room</button>
       </div>
-      ${room ? `<div class="card">Room <strong>${room}</strong> active. Share the code.</div>` : ""}`;
+      ${room ? `<div class="card">Room <strong>${room}</strong> active on this device. Share the code to compare rosters — drafts are not synced yet.</div>` : ""}`;
     document.getElementById("host").onclick = () => { room = genCode(); save(); render(); };
     document.getElementById("join").onclick = () => {
       const c = document.getElementById("code").value.toUpperCase().trim();
       if (c.length === 4) { room = c; save(); render(); }
     };
   } else if (tab === "draft") {
+    const remaining = cap - spent;
     const available = PLAYERS.filter(p => !roster.find(r => r.name === p.name));
-    const next = available[0];
+    const affordable = available.filter(p => p.value <= remaining);
+    const next = affordable[0];
     app.innerHTML = `
       <div class="card">
         <div class="muted">Cap remaining</div>
-        <div style="font-size:28px;font-weight:600">$${(cap-spent).toFixed(1)}M</div>
+        <div style="font-size:28px;font-weight:600;${
+          remaining < 60 ? (remaining < 30 ? "color:var(--red)" : "color:var(--accent)") : ""
+        }">$${remaining.toFixed(1)}M</div>
       </div>
       ${next ? `<div class="card">
         <strong>${next.name}</strong> <span class="muted">${next.pos}</span>
         <div class="muted">Suggested $${next.value}M</div>
-        <button class="primary" id="bid">Bid $${next.value}M</button>
-      </div>` : `<div class="card">Draft complete.</div>`}`;
+        <button class="primary" id="bid">Sign $${next.value}M</button>
+      </div>`
+      : (available.length
+        ? `<div class="card">No players left under your cap. Cheapest remaining is $${Math.min(...available.map(p=>p.value))}M — you have $${remaining.toFixed(1)}M.</div>`
+        : `<div class="card">Draft complete.</div>`)}`;
     if (next) document.getElementById("bid").onclick = () => {
+      if (next.value > cap - spent) return; // cap guard, never sign over the cap
       roster.push({ ...next, cost: next.value });
       spent += next.value;
       save();
       render();
     };
   } else if (tab === "roster") {
-    let html = `<div class="card"><strong>Your franchise</strong><div class="muted">Spent $${spent.toFixed(1)}M</div></div>`;
-    roster.forEach(p => html += `<div class="card">${p.name} <span class="muted">${p.pos} · $${p.cost}M</span></div>`);
+    let html = `<div class="card"><strong>Your franchise</strong><div class="muted">Spent $${spent.toFixed(1)}M of $${cap}M</div></div>`;
+    roster.forEach(p => html += `<div class="card">${p.name} <span class="muted">${p.pos} · $${p.cost}M</span></div>`;
     if (!roster.length) html += `<div class="card muted">No players yet. Start the draft.</div>`;
     app.innerHTML = html;
   } else {
